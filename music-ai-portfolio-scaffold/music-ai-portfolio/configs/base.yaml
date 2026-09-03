@@ -1,0 +1,59 @@
+# ============================================================
+# 기본 설정 — Phase 2에서 실측 후 갱신할 것
+# ============================================================
+
+project:
+  name: "music-ai-portfolio"
+  seed: 42
+
+paths:
+  # Colab 기준. 로컬에서 돌릴 경우 이 블록만 바꾸면 된다.
+  drive_root: "/content/drive/MyDrive/music-ai-portfolio"
+  raw_data: "data/raw"
+  processed_data: "data/processed"
+  checkpoints: "checkpoints"
+  outputs: "outputs"
+
+data:
+  train_val_split: 0.9
+  max_seq_len: 1024          # 16마디 커버 여부 Phase 1에서 검증
+  resolution: 128            # 128분음표 단위 (논문 주관평가 최고점)
+  augment:
+    enabled: true            # Phase 6 ablation에서 유무 비교 예정
+    key_shift: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    bpm_shift: [-10, -5, 0, 5, 10]
+
+model:
+  n_layers: 6
+  n_heads: 8
+  d_model: 512
+  d_ff: 2048
+  dropout: 0.1
+  tie_embeddings: true       # 입력/출력 임베딩 공유 (파라미터 절감)
+
+train:
+  batch_size: 32
+  grad_accum_steps: 8        # 유효 배치 = 32 * 8 = 256 (논문과 동일)
+  max_epochs: 500
+  early_stopping_patience: 20
+  optimizer: "adamw"
+  lr: 0.001                  # ⚠ 논문은 4 GPU에서 0.004. 단일 GPU 기준 재탐색 필요
+  weight_decay: 0.01
+  betas: [0.9, 0.98]
+  scheduler: "inv_sqrt"
+  warmup_steps: 100
+  grad_clip: 1.0
+  precision: "bf16"          # A100. T4/V100이면 "fp16"으로 변경
+  ckpt_every_n_steps: 500    # Colab 세션 끊김 대비 — 반드시 유지
+
+generate:
+  top_k: 32
+  temperature: 0.95
+  max_new_tokens: 1024
+  # 논문 관측: temperature↑ → diversity↑ / controllability↓
+  # 어휘가 작아 top_k 변화의 영향은 미미
+
+wandb:
+  enabled: true
+  project: "music-ai-portfolio"
+  entity: null               # 본인 W&B 계정명 입력

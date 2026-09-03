@@ -1,0 +1,29 @@
+# 데이터 — 용량이 크고 라이선스가 있으므로 커밋하지 않는다
+data/raw/
+data/processed/
+*.mid
+*.midi
+*.npy
+*.pt
+*.ckpt
+
+# 출력물
+outputs/
+checkpoints/
+*.wav
+*.mp3
+!docs/samples/*
+
+# 환경
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/
+.env
+
+# 실험 관리
+wandb/
+
+# OS
+.DS_Store

@@ -1,0 +1,113 @@
+# ============================================================
+# 토큰 사전 정의 (REMI 확장형)
+# 시퀀스 구조: [메타데이터 11종] + [note sequence] + [EOS]
+#
+# ⚠ Phase 1에서 실제 구현하며 id 범위를 확정하고 이 파일을 갱신한다.
+#   여기 적힌 범위는 설계 초안이며, 코드가 이 파일을 읽어 사전을 만든다.
+# ============================================================
+
+special:
+  PAD: 0
+  EOS: 1
+  BAR: 2
+
+# ── note sequence 토큰 ────────────────────────────────────────
+note_tokens:
+  pitch:
+    size: 128                # MIDI note 0-127
+  velocity:
+    size: 64                 # 2-127을 64단계로 양자화
+  duration:
+    size: 128                # resolution 128 기준
+  position:
+    size: 128                # 한 마디를 128등분
+  chord:
+    # root 12종 × quality 9종 = 108
+    roots: [C, C#, D, D#, E, F, F#, G, G#, A, A#, B]
+    qualities:
+      # 기본 5종
+      - major
+      - minor
+      - diminished
+      - augmented
+      - dominant
+      # 확장 화성 4종 (⭐ 차별화 포인트 — ablation 대상)
+      - sus4
+      - maj7
+      - min7
+      - half_diminished   # m7b5
+
+# ── 메타데이터 토큰 (note sequence 앞에 배치) ──────────────────
+metadata:
+  bpm:
+    range: [35, 160]
+    quantize_unit: 5
+
+  key:
+    roots: [C, C#, D, D#, E, F, F#, G, G#, A, A#, B]
+    types: [major, minor]    # 총 24
+
+  time_signature:
+    values: ["4/4", "3/4", "6/8"]
+    # 🔵 확장 검토: "5/4", "7/8"
+
+  genre:
+    values:
+      - new_age
+      - cinematic
+      # 🔵 확장 (Phase 1 후반 ~ Phase 7)
+      # - k_indie_lofi
+      # - k_indie_band
+      # - synth_pop
+
+  instrument:
+    # 128개 GM program을 8 카테고리로 축약
+    values:
+      - keyboard
+      - lead
+      - idiophone
+      - plucked_string
+      - string
+      - wind
+      - percussion
+      - etc
+
+  track_role:
+    # ⭐ 핵심 조건 — 순차 트랙 생성의 축
+    values:
+      - main_melody
+      - sub_melody
+      - accompaniment
+      - bass
+      - pad
+      - riff
+
+  pitch_range:
+    # 노트 평균 피치 기준 7단계
+    values:
+      very_low:  ["C-2", "B0"]
+      low:       ["C1",  "B1"]
+      mid_low:   ["C2",  "B2"]
+      mid:       ["C3",  "B3"]
+      mid_high:  ["C4",  "B4"]
+      high:      ["C5",  "B5"]
+      very_high: ["C6",  "G8"]
+
+  num_measures:
+    values: [4, 8, 16]       # 불완전 마디는 소수 가능 (예: 8.25)
+
+  min_velocity:
+    range: [2, 127]
+  max_velocity:
+    range: [2, 127]
+
+  rhythm:
+    values: [standard, triplet]
+    # 🔵 확장 검토: swing
+
+# ── 설계 메모 ─────────────────────────────────────────────────
+notes:
+  - "tempo 토큰은 사용하지 않는다. 짧은 샘플에서 템포 변화가 없으므로 bpm 메타데이터로 대체."
+  - "chord_progression은 단일 토큰이 아니라 position 토큰과 함께 시퀀스로 인코딩한다."
+  - "각 메타데이터의 첫 값은 unknown 토큰으로 예약한다."
+  - "목표 어휘 크기: 약 730 내외."

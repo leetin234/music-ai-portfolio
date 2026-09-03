@@ -1,5 +1,6 @@
 # ============================================================
-# 기본 설정 — Phase 2에서 실측 후 갱신할 것
+# 기본 설정
+# v2 — Phase 0 실측 결과 반영 (2026-09-03)
 # ============================================================
 
 project:
@@ -7,21 +8,28 @@ project:
   seed: 42
 
 paths:
-  # Colab 기준. 로컬에서 돌릴 경우 이 블록만 바꾸면 된다.
   drive_root: "/content/drive/MyDrive/music-ai-portfolio"
   raw_data: "data/raw"
   processed_data: "data/processed"
   checkpoints: "checkpoints"
   outputs: "outputs"
+  meta_csv: "data/raw/commu_meta.csv"
+  midi_root: "data/raw/commu_midi"
 
 data:
-  train_val_split: 0.9
-  max_seq_len: 1024          # 16마디 커버 여부 Phase 1에서 검증
-  resolution: 128            # 128분음표 단위 (논문 주관평가 최고점)
+  # ⚠️ train_val_split 제거 — CSV의 split_data 컬럼을 사용한다.
+  #    (configs/tokenizer.yaml의 split 섹션 참조)
+  max_seq_len: 2048          # ⚠️ 잠정값. Phase 1에서 실제 토큰 길이 측정 후 확정
+  resolution: 128
+
   augment:
-    enabled: true            # Phase 6 ablation에서 유무 비교 예정
-    key_shift: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-    bpm_shift: [-10, -5, 0, 5, 10]
+    key:
+      enabled: true          # ⚠️ 필수. 원본 조성이 cmajor/aminor 2종뿐이라
+                             #    끄면 조성 조건화가 성립하지 않는다.
+      shifts: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    bpm:
+      enabled: true          # 선택. Phase 6 ablation 대상
+      shifts: [-10, -5, 0, 5, 10]
 
 model:
   n_layers: 6
@@ -29,31 +37,45 @@ model:
   d_model: 512
   d_ff: 2048
   dropout: 0.1
-  tie_embeddings: true       # 입력/출력 임베딩 공유 (파라미터 절감)
+  tie_embeddings: true
 
 train:
   batch_size: 32
-  grad_accum_steps: 8        # 유효 배치 = 32 * 8 = 256 (논문과 동일)
+  grad_accum_steps: 8        # 유효 배치 = 256
   max_epochs: 500
   early_stopping_patience: 20
   optimizer: "adamw"
-  lr: 0.001                  # ⚠ 논문은 4 GPU에서 0.004. 단일 GPU 기준 재탐색 필요
+  lr: 0.001                  # ⚠️ 논문은 4 GPU에서 0.004. 단일 GPU 기준 재탐색 필요
   weight_decay: 0.01
   betas: [0.9, 0.98]
   scheduler: "inv_sqrt"
   warmup_steps: 100
   grad_clip: 1.0
-  precision: "bf16"          # A100. T4/V100이면 "fp16"으로 변경
-  ckpt_every_n_steps: 500    # Colab 세션 끊김 대비 — 반드시 유지
+
+  precision: "fp16"          # ⚠️ 현재 런타임 T4(sm_75) 기준.
+                             #    A100/L4(sm_80+)로 올리면 "bf16"으로 변경.
+                             #    T4는 네이티브 bf16 미지원 — 에뮬레이션은 오히려 느림.
+
+  ckpt_every_n_steps: 500    # Colab 세션 끊김 대비 — 삭제 금지
 
 generate:
   top_k: 32
   temperature: 0.95
-  max_new_tokens: 1024
-  # 논문 관측: temperature↑ → diversity↑ / controllability↓
-  # 어휘가 작아 top_k 변화의 영향은 미미
+  max_new_tokens: 2048
 
 wandb:
   enabled: true
   project: "music-ai-portfolio"
-  entity: null               # 본인 W&B 계정명 입력
+  entity: "leetin234-"       # Phase 0에서 확인된 실제 entity (끝 하이픈 포함)
+
+# ── Phase 0 실측 기록 ─────────────────────────────────────────
+_phase0_facts:
+  gpu: "Tesla T4 (sm_75, 14.6GB)"
+  python: "3.13.15"
+  torch: "2.11.0+cu128"
+  samples_total: 11144
+  samples_train: 10381
+  samples_val: 763
+  audio_keys_in_raw: 2       # cmajor, aminor
+  instruments_raw: 130       # 접미사 제거 시 38
+  chord_symbols_observed: 61 # 증강 후 108로 확장

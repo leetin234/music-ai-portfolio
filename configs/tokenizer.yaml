@@ -1,9 +1,11 @@
 # ============================================================
 # 토큰 사전 정의 (REMI 확장형)
-# 시퀀스 구조: [메타데이터 11종] + [note sequence] + [EOS]
 #
-# ⚠ Phase 1에서 실제 구현하며 id 범위를 확정하고 이 파일을 갱신한다.
-#   여기 적힌 범위는 설계 초안이며, 코드가 이 파일을 읽어 사전을 만든다.
+# ⚠️ 이 파일은 commu_meta.csv의 **실제 컬럼명과 값**을 반영한 v2다.
+#    (v1은 논문만 보고 쓴 추정치였고 여러 군데 어긋났음)
+#
+# 시퀀스 구조:
+#   [메타데이터 11종] + [BAR, POSITION, CHORD, POSITION, VELOCITY, PITCH, DURATION, ...] + [EOS]
 # ============================================================
 
 special:
@@ -21,93 +23,181 @@ note_tokens:
     size: 128                # resolution 128 기준
   position:
     size: 128                # 한 마디를 128등분
+
   chord:
-    # root 12종 × quality 9종 = 108
+    # 데이터에는 61종만 관측되지만(원본이 C major / A minor뿐이라서),
+    # key 증강 후 12개 root 전체가 등장하므로 12 × 9 = 108로 사전을 만든다.
     roots: [C, C#, D, D#, E, F, F#, G, G#, A, A#, B]
     qualities:
-      # 기본 5종
-      - major
-      - minor
-      - diminished
-      - augmented
-      - dominant
-      # 확장 화성 4종 (⭐ 차별화 포인트 — ablation 대상)
-      - sus4
-      - maj7
-      - min7
-      - half_diminished   # m7b5
+      # 심볼 표기는 데이터의 chord_progressions 값 그대로
+      - { name: major,           symbol: "" }      # C
+      - { name: minor,           symbol: "m" }     # Cm
+      - { name: dominant7,       symbol: "7" }     # C7
+      - { name: major7,          symbol: "maj7" }  # Cmaj7
+      - { name: minor7,          symbol: "m7" }    # Cm7
+      - { name: half_diminished, symbol: "m7b5" }  # Cm7b5
+      - { name: diminished,      symbol: "dim" }   # Cdim
+      - { name: augmented,       symbol: "+" }     # C+
+      - { name: sus4,            symbol: "sus4" }  # Csus4
 
-# ── 메타데이터 토큰 (note sequence 앞에 배치) ──────────────────
+# ── 메타데이터 (CSV 컬럼명 = 키) ───────────────────────────────
 metadata:
+
   bpm:
+    column: bpm
     range: [35, 160]
     quantize_unit: 5
 
-  key:
-    roots: [C, C#, D, D#, E, F, F#, G, G#, A, A#, B]
-    types: [major, minor]    # 총 24
+  audio_key:
+    column: audio_key
+    # ⚠️ 원본 데이터에는 2종뿐. key 증강으로 24종까지 확장된다.
+    #    표기는 root+type이 붙은 한 단어 (예: "cmajor", "aminor")
+    observed: [cmajor, aminor]
+    roots: [c, c#, d, d#, e, f, f#, g, g#, a, a#, b]
+    types: [major, minor]
+    vocab_size: 24
 
   time_signature:
+    column: time_signature
     values: ["4/4", "3/4", "6/8"]
-    # 🔵 확장 검토: "5/4", "7/8"
 
   genre:
-    values:
-      - new_age
-      - cinematic
-      # 🔵 확장 (Phase 1 후반 ~ Phase 7)
-      # - k_indie_lofi
-      # - k_indie_band
-      # - synth_pop
+    column: genre
+    values: [cinematic, newage]     # ⚠️ "new_age" 아님, 언더바 없음
+    # 🔵 Phase 7 확장 후보: k_indie_lofi, k_indie_band, synth_pop
 
-  instrument:
-    # 128개 GM program을 8 카테고리로 축약
-    values:
-      - keyboard
-      - lead
-      - idiophone
-      - plucked_string
-      - string
-      - wind
-      - percussion
-      - etc
+  inst:
+    column: inst
+    # ⚠️ 원본은 130종. "-숫자" 접미사(아티큘레이션 변형)를 제거하면 38종.
+    #    이를 8개 카테고리로 묶어 토큰화한다. instrument_map 참조.
+    strip_suffix_pattern: "-\\d+$"
+    vocab_size: 8            # lead는 현재 미사용이나 슬롯은 예약해 둔다
 
   track_role:
-    # ⭐ 핵심 조건 — 순차 트랙 생성의 축
-    values:
-      - main_melody
-      - sub_melody
-      - accompaniment
-      - bass
-      - pad
-      - riff
+    column: track_role
+    values: [main_melody, sub_melody, accompaniment, bass, pad, riff]
 
   pitch_range:
-    # 노트 평균 피치 기준 7단계
-    values:
-      very_low:  ["C-2", "B0"]
-      low:       ["C1",  "B1"]
-      mid_low:   ["C2",  "B2"]
-      mid:       ["C3",  "B3"]
-      mid_high:  ["C4",  "B4"]
-      high:      ["C5",  "B5"]
-      very_high: ["C6",  "G8"]
+    column: pitch_range
+    values: [very_low, low, mid_low, mid, mid_high, high, very_high]
 
   num_measures:
-    values: [4, 8, 16]       # 불완전 마디는 소수 가능 (예: 8.25)
+    column: num_measures
+    # ⚠️ 원본 값: 4, 5, 8, 9, 16, 17
+    #    홀수 값은 pickup(못갖춘마디)가 붙은 경우. 논문은 3종으로 처리했으므로
+    #    아래처럼 버킷팅하고, pickup 여부는 BAR 토큰 구조가 자연히 표현하게 둔다.
+    buckets:
+      4:  [4, 5]
+      8:  [8, 9]
+      16: [16, 17]
+    values: [4, 8, 16]
 
   min_velocity:
-    range: [2, 127]
-  max_velocity:
+    column: min_velocity
     range: [2, 127]
 
-  rhythm:
+  max_velocity:
+    column: max_velocity
+    range: [2, 127]
+
+  sample_rhythm:
+    column: sample_rhythm           # ⚠️ "rhythm" 아님
     values: [standard, triplet]
-    # 🔵 확장 검토: swing
+
+# ── 악기 → 카테고리 매핑 ──────────────────────────────────────
+# ⚠️ TODO: 아래는 초안. 작곡 전공 관점에서 검토·확정할 것.
+#    특히 주석에 (?) 표시된 항목은 판단이 갈릴 수 있다.
+instrument_map:
+
+  keyboard:
+    - acoustic_piano
+    - electric_piano
+    - accordion        # 자유황 악기지만 건반으로 연주 → keyboard로 분류 (확정)
+
+  idiophone:
+    # "공기·현·막·전기 없이 자체 진동으로 소리 내는 악기 (벨, 오르골 등)"
+    - bell
+    - synth_bell
+    - glockenspiel
+    - celesta          # (?) 건반으로 연주하지만 발음체는 금속판
+    - orgel            # 오르골
+    - marimba
+    - vibraphone
+    - xylophone
+
+  plucked_string:
+    - acoustic_guitar
+    - nylon_guitar
+    - electric_guitar_clean
+    - electric_guitar_distortion
+    - harp
+    - acoustic_bass    # 업라이트 베이스, 피치카토 주법
+    - electric_bass
+    - synth_bass       # (?) 신스지만 역할·주법이 플럭
+    - synth_bass_wobble
+    - synth_pluck
+
+  string:
+    # 찰현악기
+    - string_violin
+    - string_viola
+    - string_cello
+    - string_double_bass
+    - string_ensemble
+
+  wind:
+    - flute
+    - clarinet
+    - oboe
+    - bassoon
+    - horn
+    - trombone
+    - tuba
+    - brass_ensemble
+
+  percussion:
+    - timpani
+
+  lead:
+    # 의도적으로 비워둔다 (확정).
+    # 'lead'는 신디사이저 음색 카테고리(단선율·전면에 나서는 날카로운 톤)인데,
+    # ComMU는 new age / cinematic 장르라 전형적인 신스 리드 음색이 존재하지 않는다.
+    # 데이터에 없는 것을 억지로 채우지 않고 빈 카테고리로 남긴다.
+    # 단, 토큰 사전에는 슬롯을 유지하므로 나중에 K-indie(신스팝 등)를 추가해도
+    # 사전을 재구축할 필요가 없다.
+    []
+
+  etc:
+    - choir
+    - synth_voice
+    - synth_pad        # (?) 패드는 lead도 etc도 아닌 애매한 위치
+
+# ── 데이터 분할 ───────────────────────────────────────────────
+split:
+  # ⚠️ 랜덤 분할 금지. CSV의 split_data 컬럼을 그대로 사용한다.
+  #    논문이 검증셋의 메타데이터 조합을 학습셋과 겹치지 않게 설계했으므로,
+  #    재분할하면 controllability 수치가 부풀려진다.
+  column: split_data
+  train_value: train
+  val_value: val
+  counts: { train: 10381, val: 763 }
+
+# ── 코드 진행 파싱 ────────────────────────────────────────────
+chord_progression:
+  column: chord_progressions
+  # CSV에는 문자열로 저장되어 있으므로 ast.literal_eval 필요
+  parse: literal_eval
+  # 구조: 바깥 리스트 길이는 항상 1, 안쪽이 실제 진행
+  nesting: 1
+  # 안쪽 리스트는 "코드 변화"가 아니라 **격자(grid)** 다.
+  #   4마디 ≈ 32개, 8마디 ≈ 62개, 16마디 ≈ 97개 → 대략 8분음표 단위
+  #   같은 코드가 연속 반복되므로, 토큰화 시 **연속 중복을 제거**하고
+  #   변화 지점에만 [POSITION][CHORD] 쌍을 삽입한다.
+  dedupe_consecutive: true
 
 # ── 설계 메모 ─────────────────────────────────────────────────
 notes:
-  - "tempo 토큰은 사용하지 않는다. 짧은 샘플에서 템포 변화가 없으므로 bpm 메타데이터로 대체."
-  - "chord_progression은 단일 토큰이 아니라 position 토큰과 함께 시퀀스로 인코딩한다."
+  - "tempo 토큰은 사용하지 않는다. bpm 메타데이터가 대체."
   - "각 메타데이터의 첫 값은 unknown 토큰으로 예약한다."
-  - "목표 어휘 크기: 약 730 내외."
+  - "key 증강은 선택이 아니라 필수 — 원본에 조성이 2종뿐이라 끄면 조성 조건화가 무의미해진다."
+  - "목표 어휘 크기: 약 730 내외 (Phase 1에서 실측 후 갱신)."
